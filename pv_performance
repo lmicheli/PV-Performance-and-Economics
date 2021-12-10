@@ -1,5 +1,24 @@
 import pvlib
+import numpy as np
 
+def calculate_capacity (area, eff, r, tilt):
+    r"""
+    Calculate the capacity, in W, available over a surface, assuming intra-row spacing 20% larger than height from the ground.
+        
+    Parameters
+    area (float) [km2]: Available surface area.
+    eff (float) [fract]: PV Module efficiency.
+    r (float) [fract]: Percentage of the area that is available to PV.
+    tilt (float) [deg]: Tilt angle
+
+    Returns
+    -------
+    capacity (numeric) [W]: capacity that can be hosted at given surface area
+    
+    """   
+    
+    return area*1000*1000*eff*r/(np.cos(np.radians(tilt))+1.2*np.sin(np.radians(tilt)))*1000 #W/m2
+    
 def calculate_yield(time, latitude, longitude, irr, solpos, dni_extra, altitude, temp_air, wind_speed, u_c, u_v, albedo,
                     surface_tilt, surface_azimuth=180., gamma_pdc=-0.0034, pdc0=1., 
                     p_losses=0.14, inv_eff=0.96, module_efficiency=0.1, alpha_absorption=0.9):
