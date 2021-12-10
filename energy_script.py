@@ -1,0 +1,65 @@
+import pvlib
+
+def calculate_yield(time, latitude, longitude, irr, solpos, dni_extra, altitude, temp_air, wind_speed, u_c, u_v, albedo,
+                    surface_tilt, surface_azimuth=180., gamma_pdc=-0.0034, pdc0=1., 
+                    p_losses=0.14, inv_eff=0.96, module_efficiency=0.1, alpha_absorption=0.9):
+    
+    r"""
+    Calculate the daily energy yield of a PV system, in kWh/kW. It uses the
+    NREL’s PVWatts DC power model and the cell temperature module of PVSyst.
+
+    Parameters
+    ----------
+    time (DatetimeIndex): UTC
+    latitude (numeric) [deg]: Latitude. Positive if north of equator
+    longitude (numeric) [deg]: Longitude. Positive if east
+    solpos (numeric): Contains information on the solar position
+    dni_extra (numeric) [W/m2]: Extraterrestrial radiation.
+    altitude (numeric) [m]: Altitude
+    temp_air (numeric) [C]: Ambient temperature
+    wind_speed (numeric) [m/s] – Wind speed. Not needed if u_v is set to 0.
+    u_c (numeric) [W/m2C] – Constant heat transfer component.
+    u_v (numeric) [W/m2C] – Convective heat transfer component.
+    albedo (numeric) [fraction]: Ground reflectance
+    surface_tilt (numeric) [deg] – Inclination of PV modules from horizontal.
+    surface_azimuth (numeric) [deg] – PV modules' azimuth from north.
+    gamma_pdc (numeric) [C-1]: Module's power temperature coefficient
+    pdc0 (numeric) [W]: Modelled power capacity
+    p_losses (numeric) [fraction]: Modelled power losses
+    inv_eff (numeric) [fraction]: Inverter's efficiency
+    module_efficiency (numeric) [fraction]: Module external efficiency
+    alpha_absorption (numeric) [fraction]: Absorption coefficient
+       
+
+    Returns
+    -------
+    p_ac (numeric) [Wh/W]: Modelled AC power output
+    
+    References
+    ----------
+
+    """
+ 
+    airmass_relative=pvlib.atmosphere.get_relative_airmass(solpos.zenith, model='kastenyoung1989')
+    airmass=pvlib.atmosphere.get_absolute_airmass(airmass_relative)
+    
+    #Calculate the angle of incidence   
+    aoi=pvlib.irradiance.aoi(surface_tilt, surface_azimuth, solpos.zenith, solpos.azimuth)
+    #Calculate the incidence angle modifier
+    iam=pvlib.iam.physical(aoi)
+    #Calculate the ground diffuse irradiance       
+    poa_ground_diffuse=pvlib.irradiance.get_ground_diffuse(surface_tilt, irr.GHI, albedo)
+    #Calculate the sky diffuse irradiance   
+    poa_sky_diffuse=pvlib.irradiance.get_sky_diffuse(surface_tilt, surface_azimuth, solpos.zenith, solpos.azimuth, irr.BNI, irr.GHI, irr.DHI, dni_extra, airmass=airmass, model='isotropic', model_perez='allsitescomposite1990')
+    
+    #Calculate the components of the irradiance
+    poa=pvlib.irradiance.poa_components(aoi, irr.BNI, poa_sky_diffuse, poa_ground_diffuse)
+    #Calculate the cell temperature
+    temp_cell=pvlib.temperature.pvsyst_cell(poa.poa_global, temp_air, wind_speed, u_c, u_v, module_efficiency, alpha_absorption=0.9)
+
+    #As required by PVWatts, the angle of incidence losses are removed from the irradiance
+    g_poa_effective=poa.poa_direct*iam+poa.poa_diffuse
+    
+    #Calculate the energy yield
+    pv_yield=pvlib.pvsystem.pvwatts_dc(g_poa_effective, temp_cell, pdc0, gamma_pdc, temp_ref=25.0)
+    return pv_yield.groupby(pv_yield.index.date).sum()*inv_eff*(1-p_losses)
