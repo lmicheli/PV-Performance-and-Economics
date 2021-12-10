@@ -37,3 +37,55 @@ def calculate_lcoe(Ef, econ, T=25, deg=0.01, Nd=20):
         lcoe_den+=Ef*(1-deg)**year/(1+econ.d/100.)**year    
     #Return the value of the ratio between numerator and denominator
     return lcoe_num/lcoe_den
+    
+        
+def calculate_capex(Ef, econ, lcoe_l, T=25, deg=0.01, Nd=20, check=False):
+    r"""
+    Calculate CAPEX, in €/kW, to match a given LCOE, in €/kWh, assuming linear degradation rate.
+    Assume fixed parameters.
+    
+    Parameters
+    ----------
+    Ef (float) [kWh/kW/year]: Yearly energy yield of the system, degradation excluded.
+    econ (numeric) [€/kW]: Contains system specific economic information. Fractional values are reported as percentages. It should include:
+        capex (float) [€/kW]: Capital Expenditure
+        opex (float) [€/kW/year]: Yearly O&M Costs
+        Tx (float) [%]: Corporate Tax Rate
+        d (float) [%]: Discount Rate
+        rom (float) [%]: Annual increase in O&M Costs
+    lcoe_l (numeric) [€/kWh]: LCOE to match
+    T (int) [year]: Lifetime of the system
+    deg (numeric) [year-1]: Yearly Linear System's Degradation rate
+    Nd (int) [year]: Number of years considered for depreciation
+    check (binary): If true, checks that the found capex returns the given LCOE
+
+    Returns
+    -------
+    capex (numeric) [€/kW]: maximum CAPEX allowed to match given LCOE
+    
+    """   
+    #Setting Values of Numerators and Denominator before Year 1
+    #Equation: LCOE_target = (CAPEX + NUM1 + CAPEX * NUM2) / DEN with NUM2<0
+
+    lcoe_num1,lcoe_num2, lcoe_den=0.,0.,0.
+    #Calculating Annual Tax Depreciation
+    Dn=1/Nd
+    #Iteration over the PV system lifetime
+    for year in np.arange(1,T+1):
+        #Add the yearly OPEX costs to numerator
+        lcoe_num1+=econ.opex*(1-econ.Tx/100.)*(1+econ.rom/100.)**year/(1+econ.d/100.)**year
+        #Substract the depreciation from numerator
+        if year<=Nd: lcoe_num2-=Dn*econ.Tx/100./(1+econ.d/100.)**year
+        #Add the yearly yield, after degradation, to denominator
+        lcoe_den+=Ef*(1-deg)**year/(1+econ.d/100.)**year
+    #Calculate CAPEX needed to match LCOE in input: CAPEX=(LCOE*DEN+NUM1)/(1+NUM2)
+    capex=(lcoe_l*lcoe_den-lcoe_num1)/(1+lcoe_num2)
+    #Run LCOE check, if required.
+    if check:
+        econ.loc['capex']=capex
+        if round(lcoe_l,8)!=round(calculate_lcoe(Ef, econ, T, deg, Nd),8):
+            #If the LCOEs are different, an error is raised
+            print(round(lcoe_l,8),round(calculate_lcoe(Ef, econ, T, deg, Nd),8))
+            raise NameError('Different LCOEs')
+
+    return capex
